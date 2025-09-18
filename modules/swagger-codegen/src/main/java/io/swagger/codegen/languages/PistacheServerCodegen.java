@@ -106,6 +106,28 @@ public class PistacheServerCodegen extends AbstractCppCodegen {
     }
 
     @Override
+    public void preprocessSwagger(Swagger swagger) {
+        super.preprocessSwagger(swagger);
+
+        String host = swagger.getHost();
+        String port = "8080"; // Default port if not found
+
+        if (host != null && host.contains(":")) {
+            String[] parts = host.split(":");
+            if (parts.length > 1) {
+                String parsedPort = parts[parts.length - 1];
+                try {
+                    Integer.parseInt(parsedPort);
+                    port = parsedPort;
+                } catch (NumberFormatException e) {
+                    System.err.println("Warning: Could not parse port from host '" + host + "'. Using default 8080.");
+                }
+            }
+        }
+        additionalProperties.put("serverPort", port);
+    }
+
+    @Override
     public void processOpts() {
         super.processOpts();
 
@@ -213,14 +235,14 @@ public class PistacheServerCodegen extends AbstractCppCodegen {
 
                 //TODO: This changes the info about the real type but it is needed to parse the header params
                 if (param.isHeaderParam) {
-                    param.dataType = "Optional<Net::Http::Header::Raw>";
-                    param.baseType = "Optional<Net::Http::Header::Raw>";
+                    param.dataType = "std::optional<Pistache::Http::Header::Raw>";
+                    param.baseType = "std::optional<Pistache::Http::Header::Raw>";
                 } else if(param.isQueryParam){
                     if(param.isPrimitiveType) {
-                        param.dataType = "Optional<" + param.dataType + ">";
+                        param.dataType = "std::optional<" + param.dataType + ">";
                     } else {
-                        param.dataType = "Optional<" + param.baseType + ">";
-                        param.baseType = "Optional<" + param.baseType + ">";
+                        param.dataType = "std::optional<" + param.baseType + ">";
+                        param.baseType = "std::optional<" + param.baseType + ">";
                     }
                 }
             }
@@ -338,12 +360,38 @@ public class PistacheServerCodegen extends AbstractCppCodegen {
     public void postProcessParameter(CodegenParameter parameter) {
         super.postProcessParameter(parameter);
 
-        boolean isPrimitiveType = parameter.isPrimitiveType == Boolean.TRUE;
-        boolean isListContainer = parameter.isListContainer == Boolean.TRUE;
-        boolean isString = parameter.isString == Boolean.TRUE;
+        if (!parameter.required && languageSpecificPrimitives.contains(parameter.baseType)) {
+            parameter.dataType = "std::optional<" + parameter.baseType + ">";
 
-        if (!isPrimitiveType && !isListContainer && !isString && !parameter.dataType.startsWith("std::shared_ptr")) {
-            parameter.dataType = "std::shared_ptr<" + parameter.dataType + ">";
+            parameter.isListContainer = false;
+            parameter.isPrimitiveType = false;
+            parameter.isString = false;
+
+            parameter.vendorExtensions.put("x-is-optional-primitive", true);
+            String baseType = parameter.baseType;
+            if ("integer".equals(baseType) || "int32_t".equals(baseType)) {
+                parameter.vendorExtensions.put("x-is-integer", true);
+            }
+            if ("long".equals(baseType) || "int64_t".equals(baseType)) {
+                parameter.vendorExtensions.put("x-is-long", true);
+            }
+            if ("float".equals(baseType)) {
+                parameter.vendorExtensions.put("x-is-float", true);
+            }
+            if ("double".equals(baseType)) {
+                parameter.vendorExtensions.put("x-is-double", true);
+            }
+            if ("boolean".equals(baseType)) {
+                parameter.vendorExtensions.put("x-is-boolean", true);
+            }
+        } else {
+            boolean isPrimitiveType = parameter.isPrimitiveType == Boolean.TRUE;
+            boolean isListContainer = parameter.isListContainer == Boolean.TRUE;
+            boolean isString = parameter.isString == Boolean.TRUE;
+
+            if (!isPrimitiveType && !isListContainer && !isString && !parameter.dataType.startsWith("std::shared_ptr")) {
+                parameter.dataType = "std::shared_ptr<" + parameter.dataType + ">";
+            }
         }
     }
 

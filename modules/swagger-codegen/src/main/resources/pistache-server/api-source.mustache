@@ -15,8 +15,7 @@ using namespace {{modelNamespace}};
 
 void {{classname}}::init(size_t thr = 2) {
     auto opts = Pistache::Http::Endpoint::options()
-        .threads(thr)
-        .flags(Pistache::Tcp::Options::InstallSignalHandler);
+        .threads(thr);
     httpEndpoint->init(opts);
     setupRoutes();
 }
@@ -43,60 +42,83 @@ void {{classname}}::setupRoutes() {
 
 {{#operation}}
 void {{classname}}::{{operationIdSnakeCase}}_handler(const Pistache::Rest::Request &request, Pistache::Http::ResponseWriter response) {
-    {{#vendorExtensions.x-codegen-pistache-isParsingSupported}}
-    {{#hasPathParams}}
+  try { {{#vendorExtensions.x-codegen-pistache-isParsingSupported}}{{#hasPathParams}}
     // Getting the path params
     {{#pathParams}}
-    auto {{paramName}} = request.param(":{{paramName}}").as<{{dataType}}>();
-    {{/pathParams}}
-    {{/hasPathParams}}{{#hasBodyParam}}
+    auto {{paramName}} = request.param(":{{paramName}}").as<{{{dataType}}}>();{{/pathParams}}{{/hasPathParams}}{{#hasBodyParam}}
+
     // Getting the body param
     {{#bodyParam}}
     {{^isPrimitiveType}}
     {{baseType}} {{paramName}};{{/isPrimitiveType}}
     {{#isPrimitiveType}}
-    {{dataType}} {{paramName}};
-    {{/isPrimitiveType}}
-    {{/bodyParam}}
-    {{/hasBodyParam}}{{#hasQueryParams}}
+    {{{dataType}}} {{paramName}};
+    {{/isPrimitiveType}}{{/bodyParam}}{{/hasBodyParam}}{{#hasQueryParams}}
+
     // Getting the query params
     {{#queryParams}}
+    {{#vendorExtensions.x-is-optional-primitive}}
+
+    // Handle optional primitive parameters
+    {{{dataType}}} {{paramName}};
+    if (request.query().has("{{baseName}}")) {
+      auto sval = request.query().get("{{baseName}}").value();
+      try {
+        {{#vendorExtensions.x-is-integer}}
+        {{paramName}} = std::stoi(sval);
+        {{/vendorExtensions.x-is-integer}}
+        {{#vendorExtensions.x-is-long}}
+        {{paramName}} = std::stoll(sval);
+        {{/vendorExtensions.x-is-long}}
+        {{#vendorExtensions.x-is-float}}
+        {{paramName}} = std::stof(sval);
+        {{/vendorExtensions.x-is-float}}
+        {{#vendorExtensions.x-is-double}}
+        {{paramName}} = std::stod(sval);
+        {{/vendorExtensions.x-is-double}}
+        {{#vendorExtensions.x-is-boolean}}
+        if (sval == "true" || sval == "1") {
+          {{paramName}} = true;
+        } else if (sval == "false" || sval == "0") {
+          {{paramName}} = false;
+        } else {
+          throw std::runtime_error("Invalid boolean value '" + sval + "' for {{baseName}}");
+        }
+        {{/vendorExtensions.x-is-boolean}}
+      } catch (const std::exception& e) {
+        throw std::runtime_error("Error parsing query parameter '{{baseName}}' with value '" + sval + "': " + e.what());
+      }
+    }
+    {{/vendorExtensions.x-is-optional-primitive}}
+    {{^vendorExtensions.x-is-optional-primitive}}
+    {{^required}}
     auto {{paramName}} = request.query().get("{{baseName}}");
-    {{/queryParams}}
-    {{/hasQueryParams}}{{#hasHeaderParams}}
+    {{/required}}
+    {{#required}}
+    auto {{paramName}} = request.query().get("{{baseName}}");{{/required}}{{/vendorExtensions.x-is-optional-primitive}}{{/queryParams}}{{/hasQueryParams}}{{#hasHeaderParams}}
+
     // Getting the header params
     {{#headerParams}}
-    auto {{paramName}} = request.headers().tryGetRaw("{{baseName}}");
-    {{/headerParams}}
-    {{/hasHeaderParams}}
-
-    try {
-    {{#hasBodyParam}}
-    {{#bodyParam}}
-      nlohmann::json request_body = nlohmann::json::parse(request.body());
+    auto {{paramName}} = request.headers().tryGetRaw("{{baseName}}");{{/headerParams}}{{/hasHeaderParams}}{{#hasBodyParam}}{{#bodyParam}}
+    nlohmann::json request_body = nlohmann::json::parse(request.body());
     {{^isPrimitiveType}}
-      {{paramName}}.fromJson(request_body); {{/isPrimitiveType}}
+    {{paramName}}.fromJson(request_body);{{/isPrimitiveType}}
     {{#isPrimitiveType}}
-      // The conversion is done automatically by the json library
-      {{paramName}} = request_body;
-    {{/isPrimitiveType}}
-    {{/bodyParam}}
-    {{/hasBodyParam}}
-      this->{{operationIdSnakeCase}}({{#allParams}}{{paramName}}{{#hasMore}}, {{/hasMore}}{{/allParams}}{{#hasParams}}, {{/hasParams}}response);
+    {{paramName}} = request_body;
+    {{/isPrimitiveType}}{{/bodyParam}}{{/hasBodyParam}}
+    this->{{operationIdSnakeCase}}({{#allParams}}{{paramName}}{{#hasMore}}, {{/hasMore}}{{/allParams}}{{#hasParams}}, {{/hasParams}}response);
     {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
     {{^vendorExtensions.x-codegen-pistache-isParsingSupported}}
-    try {
-      this->{{operationIdSnakeCase}}(request, response);
+    this->{{operationIdSnakeCase}}(request, response);
     {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
-    } catch (std::runtime_error & e) {
-      //send a 400 error
-      response.send(Pistache::Http::Code::Bad_Request, e.what());
-      return;
-    }
-
+  } catch (std::runtime_error & e) {
+    //send a 400 error
+    response.send(Pistache::Http::Code::Bad_Request, e.what());
+    return;
+  }
 }
-{{/operation}}
 
+{{/operation}}
 void {{classname}}::{{classnameSnakeLowerCase}}_default_handler(const Pistache::Rest::Request &request, Pistache::Http::ResponseWriter response) {
     response.send(Pistache::Http::Code::Not_Found, "The requested method does not exist");
 }
