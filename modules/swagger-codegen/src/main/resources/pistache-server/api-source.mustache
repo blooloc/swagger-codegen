@@ -38,56 +38,101 @@ void {{classname}}::setupRoutes() {
 
     // Default handler, called when a route is not found
     router.addCustomHandler(Routes::bind(&{{classname}}::{{classnameSnakeLowerCase}}_default_handler, this));
+    {{#hasBasicMethods}}
+
+    // Check for Basic Auth on all routes if any Basic Auth is defined
+    router.addMiddleware(Routes::middleware(&{{classname}}::checkBasicAuthPresent, this));
+    {{/hasBasicMethods}}
+    {{#hasBearerMethods}}
+
+    // Check for Bearer Auth on all routes if any Bearer Auth is defined
+    router.addMiddleware(Routes::middleware(&{{classname}}::checkBearerAuthPresent, this));
+    {{/hasBearerMethods}}
 }
 
+{{#hasBasicMethods}}
+// This function is defined once if any Basic Auth is present.
+bool {{classname}}::checkBasicAuthPresent(Pistache::Http::Request &request, Pistache::Http::ResponseWriter &response) {
+    if (request.headers().has<Pistache::Http::Header::Authorization>()) {
+        const auto authHeader = request.headers().get<Pistache::Http::Header::Authorization>();
+        if (authHeader->getMethod() == Pistache::Http::Header::Authorization::Method::Basic) {
+            return true;
+        }
+    }
+
+    response.send(Pistache::Http::Code::Unauthorized, "Unauthorized: Missing or incorrect Authorization header\n");
+    return false;
+}
+
+{{/hasBasicMethods}}
+{{#hasBearerMethods}}
+// This function is defined once if any Bearer Auth (ApiKey in header or OAuth2) is present.
+bool {{classname}}::checkBearerAuthPresent(Pistache::Http::Request &request, Pistache::Http::ResponseWriter &response) {
+    if (request.headers().has<Pistache::Http::Header::Authorization>()) {
+        const auto authHeader = request.headers().get<Pistache::Http::Header::Authorization>();
+        if (authHeader->getMethod() == Pistache::Http::Header::Authorization::Method::Bearer) {
+            return true;
+        }
+    }
+
+    response.send(Pistache::Http::Code::Unauthorized, "Unauthorized: Missing or incorrect Authorization header\n");
+    return false;
+}
+
+{{/hasBearerMethods}}
 {{#operation}}
 void {{classname}}::{{operationIdSnakeCase}}_handler(const Pistache::Rest::Request &request, Pistache::Http::ResponseWriter response) {
-  try { {{#vendorExtensions.x-codegen-pistache-isParsingSupported}}{{#hasPathParams}}
+    {{#vendorExtensions.x-codegen-pistache-isParsingSupported}}
+    {{#hasPathParams}}
     // Getting the path params
     {{#pathParams}}
-    auto {{paramName}} = request.param(":{{paramName}}").as<{{{dataType}}}>();{{/pathParams}}{{/hasPathParams}}{{#hasBodyParam}}
+    auto {{paramName}} = request.param(":{{paramName}}").as<{{{dataType}}}>();
+    {{/pathParams}}
 
+    {{/hasPathParams}}
+    {{#hasBodyParam}}
     // Getting the body param
     {{#bodyParam}}
     {{^isPrimitiveType}}
     {{baseType}} {{paramName}};{{/isPrimitiveType}}
     {{#isPrimitiveType}}
     {{{dataType}}} {{paramName}};
-    {{/isPrimitiveType}}{{/bodyParam}}{{/hasBodyParam}}{{#hasQueryParams}}
-
+    {{/isPrimitiveType}}
+    {{/bodyParam}}
+    {{/hasBodyParam}}
+    {{#hasQueryParams}}
     // Getting the query params
     {{#queryParams}}
     {{#vendorExtensions.x-is-optional-primitive}}
-
     // Handle optional primitive parameters
     {{{dataType}}} {{paramName}};
     if (request.query().has("{{baseName}}")) {
-      auto sval = request.query().get("{{baseName}}").value();
-      try {
-        {{#vendorExtensions.x-is-integer}}
-        {{paramName}} = std::stoi(sval);
-        {{/vendorExtensions.x-is-integer}}
-        {{#vendorExtensions.x-is-long}}
-        {{paramName}} = std::stoll(sval);
-        {{/vendorExtensions.x-is-long}}
-        {{#vendorExtensions.x-is-float}}
-        {{paramName}} = std::stof(sval);
-        {{/vendorExtensions.x-is-float}}
-        {{#vendorExtensions.x-is-double}}
-        {{paramName}} = std::stod(sval);
-        {{/vendorExtensions.x-is-double}}
-        {{#vendorExtensions.x-is-boolean}}
-        if (sval == "true" || sval == "1") {
-          {{paramName}} = true;
-        } else if (sval == "false" || sval == "0") {
-          {{paramName}} = false;
-        } else {
-          throw std::runtime_error("Invalid boolean value '" + sval + "' for {{baseName}}");
+        auto sval = request.query().get("{{baseName}}").value();
+        try {
+            {{#vendorExtensions.x-is-integer}}
+            {{paramName}} = std::stoi(sval);
+            {{/vendorExtensions.x-is-integer}}
+            {{#vendorExtensions.x-is-long}}
+            {{paramName}} = std::stoll(sval);
+            {{/vendorExtensions.x-is-long}}
+            {{#vendorExtensions.x-is-float}}
+            {{paramName}} = std::stof(sval);
+            {{/vendorExtensions.x-is-float}}
+            {{#vendorExtensions.x-is-double}}
+            {{paramName}} = std::stod(sval);
+            {{/vendorExtensions.x-is-double}}
+            {{#vendorExtensions.x-is-boolean}}
+            if (sval == "true" || sval == "1") {
+                {{paramName}} = true;
+            } else if (sval == "false" || sval == "0") {
+                {{paramName}} = false;
+            } else {
+                throw std::runtime_error("Invalid boolean value '" + sval + "' for {{baseName}}");
+            }
+            {{/vendorExtensions.x-is-boolean}}
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Error parsing query parameter '{{baseName}}' with value '" + sval + "': " + e.what());
         }
-        {{/vendorExtensions.x-is-boolean}}
-      } catch (const std::exception& e) {
-        throw std::runtime_error("Error parsing query parameter '{{baseName}}' with value '" + sval + "': " + e.what());
-      }
     }
     {{/vendorExtensions.x-is-optional-primitive}}
     {{^vendorExtensions.x-is-optional-primitive}}
@@ -95,27 +140,40 @@ void {{classname}}::{{operationIdSnakeCase}}_handler(const Pistache::Rest::Reque
     auto {{paramName}} = request.query().get("{{baseName}}");
     {{/required}}
     {{#required}}
-    auto {{paramName}} = request.query().get("{{baseName}}");{{/required}}{{/vendorExtensions.x-is-optional-primitive}}{{/queryParams}}{{/hasQueryParams}}{{#hasHeaderParams}}
+    auto {{paramName}} = request.query().get("{{baseName}}");
+    {{/required}}
+    {{/vendorExtensions.x-is-optional-primitive}}
+    {{/queryParams}}
 
+    {{/hasQueryParams}}
+    {{#hasHeaderParams}}
     // Getting the header params
     {{#headerParams}}
-    auto {{paramName}} = request.headers().tryGetRaw("{{baseName}}");{{/headerParams}}{{/hasHeaderParams}}{{#hasBodyParam}}{{#bodyParam}}
+    auto {{paramName}} = request.headers().tryGetRaw("{{baseName}}");
+    {{/headerParams}}
+    {{/hasHeaderParams}}
+    {{#hasBodyParam}}
+    {{#bodyParam}}
     nlohmann::json request_body = nlohmann::json::parse(request.body());
     {{^isPrimitiveType}}
-    {{paramName}}.fromJson(request_body);{{/isPrimitiveType}}
+    {{paramName}}.fromJson(request_body);
+    {{/isPrimitiveType}}
     {{#isPrimitiveType}}
     {{paramName}} = request_body;
-    {{/isPrimitiveType}}{{/bodyParam}}{{/hasBodyParam}}
-    this->{{operationIdSnakeCase}}({{#allParams}}{{paramName}}{{#hasMore}}, {{/hasMore}}{{/allParams}}{{#hasParams}}, {{/hasParams}}response);
-    {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
-    {{^vendorExtensions.x-codegen-pistache-isParsingSupported}}
-    this->{{operationIdSnakeCase}}(request, response);
-    {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
-  } catch (std::runtime_error & e) {
-    //send a 400 error
-    response.send(Pistache::Http::Code::Bad_Request, e.what());
-    return;
-  }
+    {{/isPrimitiveType}}
+    {{/bodyParam}}
+    {{/hasBodyParam}}
+    try {
+        this->{{operationIdSnakeCase}}({{#allParams}}{{paramName}}{{#hasMore}}, {{/hasMore}}{{/allParams}}{{#hasParams}}, {{/hasParams}}response);
+        {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
+        {{^vendorExtensions.x-codegen-pistache-isParsingSupported}}
+        this->{{operationIdSnakeCase}}(request, response);
+        {{/vendorExtensions.x-codegen-pistache-isParsingSupported}}
+    } catch (std::runtime_error & e) {
+        //send a 400 error
+        response.send(Pistache::Http::Code::Bad_Request, e.what());
+        return;
+    }
 }
 
 {{/operation}}

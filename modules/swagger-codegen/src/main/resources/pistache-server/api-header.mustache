@@ -11,6 +11,7 @@
 {{{defaultInclude}}}
 #include <pistache/endpoint.h>
 #include <pistache/http.h>
+#include <pistache/http_headers.h>
 #include <pistache/router.h>
 #include <pistache/http_headers.h>
 #include <optional>
@@ -36,6 +37,12 @@ public:
 
 private:
     void setupRoutes();
+    {{#hasBasicMethods}}
+    bool checkBasicAuthPresent(Pistache::Http::Request &request, Pistache::Http::ResponseWriter &response);
+    {{/hasBasicMethods}}
+    {{#hasBearerMethods}}
+    bool checkBearerAuthPresent(Pistache::Http::Request &request, Pistache::Http::ResponseWriter &response);
+    {{/hasBearerMethods}}
 
     {{#operation}}
     void {{operationIdSnakeCase}}_handler(const Pistache::Rest::Request &request, Pistache::Http::ResponseWriter response);

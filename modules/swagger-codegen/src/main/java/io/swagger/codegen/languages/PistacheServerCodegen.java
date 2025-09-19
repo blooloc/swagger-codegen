@@ -16,6 +16,12 @@ import io.swagger.codegen.CodegenProperty;
 import io.swagger.codegen.CodegenType;
 import io.swagger.codegen.DefaultCodegen;
 import io.swagger.codegen.SupportingFile;
+import io.swagger.models.SecurityRequirement;
+import io.swagger.models.auth.ApiKeyAuthDefinition;
+import io.swagger.models.auth.BasicAuthDefinition;
+import io.swagger.models.auth.OAuth2Definition;
+import io.swagger.models.auth.SecuritySchemeDefinition;
+import io.swagger.models.auth.In;
 import io.swagger.models.Model;
 import io.swagger.models.Operation;
 import io.swagger.models.Response;
@@ -109,9 +115,50 @@ public class PistacheServerCodegen extends AbstractCppCodegen {
     public void preprocessSwagger(Swagger swagger) {
         super.preprocessSwagger(swagger);
 
-        String host = swagger.getHost();
-        String port = "8080"; // Default port if not found
+        if (swagger == null) {
+            return;
+        }
 
+        // This is the global properties map for all templates. We will add our flags here.
+        if (swagger.getSecurity() != null && swagger.getSecurityDefinitions() != null) {
+            boolean hasBasic = false;
+            boolean hasBearer = false;
+            Map<String, SecuritySchemeDefinition> securityDefinitions = swagger.getSecurityDefinitions();
+
+            for (SecurityRequirement sr : swagger.getSecurity()) {
+                for (String securityDefinitionName : sr.getRequirements().keySet()) {
+                    if (securityDefinitions.containsKey(securityDefinitionName)) {
+                        SecuritySchemeDefinition ssd = securityDefinitions.get(securityDefinitionName);
+
+                        if (ssd instanceof BasicAuthDefinition) {
+                            hasBasic = true;
+                        }
+
+                        if (ssd instanceof OAuth2Definition) {
+                            hasBearer = true;
+                        }
+
+                        if (ssd instanceof ApiKeyAuthDefinition) {
+                            ApiKeyAuthDefinition apiKey = (ApiKeyAuthDefinition) ssd;
+
+                            if (apiKey.getIn() == In.HEADER) {
+                                hasBearer = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (hasBasic) {
+                additionalProperties.put("hasBasicMethods", true);
+            }
+            if (hasBearer) {
+                additionalProperties.put("hasBearerMethods", true);
+            }
+        }
+
+        String host = swagger.getHost();
+        String port = "8080";
         if (host != null && host.contains(":")) {
             String[] parts = host.split(":");
             if (parts.length > 1) {
