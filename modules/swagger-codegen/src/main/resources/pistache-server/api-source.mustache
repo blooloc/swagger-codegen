@@ -37,7 +37,7 @@ void {{classname}}::setupRoutes() {
     {{/operation}}
 
     // Default handler, called when a route is not found
-    router.addCustomHandler(Routes::bind(&{{classname}}::{{classnameSnakeLowerCase}}_default_handler, this));
+    router.addNotFoundHandler(Routes::bind(&{{classname}}::{{classnameSnakeLowerCase}}_default_handler, this));
     {{#hasBasicMethods}}
 
     // Check for Basic Auth on all routes if any Basic Auth is defined
